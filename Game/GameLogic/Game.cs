@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Views;
 
@@ -7,15 +8,12 @@ namespace Game.GameLogic
     public class Game
     {
         public Cell[] Map { get; set; }
-        private GameStages stage = GameStages.Menu;
-        public GameStages Stage => stage;
+        public static Sticks Sticks { get; set; }
         public Player PlayerFirst { get; set; }
         public Player PlayerSecond { get; set; }
-        public event Action<GameStages> StageChanged;
         private bool isFirstPlayerCurrent = false;
-        public Player CurrentPlayer { get; set; }
-        public event Action<Player> CurrentPlayerChanged;
-
+        public static Player CurrentPlayer { get; set; }
+        
 
 
         //Для игрока - человека нужно сделать выбор фигуры по нажатию ЛКМ
@@ -26,6 +24,8 @@ namespace Game.GameLogic
             MapFilling();
             PlayerFirst = new Player(ChipsType.Cone, Map);
             PlayerSecond = new Player(ChipsType.Coil, Map);
+            Sticks = new Sticks();
+            CurrentPlayer = PlayerSecond;
         }
         
 
@@ -33,8 +33,8 @@ namespace Game.GameLogic
         {
             for (var i = 1; i < 14; i += 2)
             {
-                Map[i] = new Cell(new Figure(i, (i+1)/2, ChipsType.Cone));
-                Map[i + 1] = new Cell(new Figure(i + 1, (i+1)/2, ChipsType.Coil));
+                Map[i] = new Cell(new Figure(i, (i + 1) / 2, ChipsType.Cone));
+                Map[i + 1] = new Cell(new Figure(i + 1, (i + 1) / 2, ChipsType.Coil));
             }
 
             for (var i = 16; i <= 25; i++)
@@ -49,51 +49,43 @@ namespace Game.GameLogic
             Map[29] = new HouseOfIsidaAndNeftida(null);
             Map[30] = new HouseOfRaHorati(null);
         }
-
-        public void ChangeStage(GameStages stage)
-        {
-            this.stage = stage;
-            StageChanged?.Invoke(stage);
-        }
-
         
         public void ChangeCurrentPlayer()
         {
             CurrentPlayer = isFirstPlayerCurrent ? PlayerSecond : PlayerFirst;
-            //CurrentPlayerChanged?.Invoke(CurrentPlayer);
+            isFirstPlayerCurrent = CurrentPlayer == PlayerFirst;
         }
 
-        public void HumanMove(int figureNumber, Sticks sticks)
+        public static bool IsGameOver() => CurrentPlayer.OwnFigures.Count == 0;
+
+        public void NoHumanMove(int figureNumber, Sticks sticks)
         {
             var stepCount = sticks.Throw();
             var currentFigure = CurrentPlayer.OwnFigures.Find(figure => figure.SerialNumber == figureNumber);
             if (!MakeStep(stepCount, Map, currentFigure)) return;
             if (sticks.ExtraMove) 
-                HumanMove(currentFigure.SerialNumber, sticks);
+                NoHumanMove(currentFigure.SerialNumber, sticks);
             ChangeCurrentPlayer();
         }
 
-        public void Start()
-        {
-            throw new NotImplementedException();
-        }
-        
-        public static bool MakeStep(int stepCount, Cell[] map, Figure figure)//Перенести часть? логики в Game
-        {
+        public static bool MakeStep(int stepCount, Cell[] map, Figure figure)
+        { 
             if (stepCount == 0) return false;
             var targetLocation = figure.Location + stepCount;
                 
-            if (map[figure.Location] is HouseOfWater)// Свойство дома
+            if (map[figure.Location] is HouseOfWater)
             {
                 switch (stepCount)
                 {
                     case 4:
                         map[figure.Location].State = null;
+                        CurrentPlayer.FigureInTheHouseOfWater = null;
                         return true;
                     case 5:
                         return false;
                     default:
-                        MoveToHouseOfRevival(map, figure); 
+                        MoveToHouseOfRevival(map, figure);
+                        CurrentPlayer.FigureInTheHouseOfWater = null;
                         return true;
                 }
             }
@@ -103,6 +95,7 @@ namespace Game.GameLogic
                 && !(map[figure.Location] is IFinalHouse))
             {
                 StepToHouseOfBeauty(map, figure);
+                CurrentPlayer.FigureInTheHouseOfBeauty = figure;
                 return true;
             }
 
@@ -121,8 +114,11 @@ namespace Game.GameLogic
                         MoveToHouseOfRevival(map, temp);
                         SimpleStep(stepCount, map, figure);
                     }
-                }
 
+                    if (stepCount == 1)
+                        CurrentPlayer.FigureInTheHouseOfWater = figure;
+                }
+                CurrentPlayer.FigureInTheHouseOfBeauty = null;
                 return true;
             }//Вложенность
             
@@ -130,14 +126,15 @@ namespace Game.GameLogic
             if (map.Length - figure.Location <= 3)
                 return StepOut(stepCount, map, figure);
             
+            if (map[figure.Location + stepCount].State != null)
+                map[figure.Location + stepCount].State.IsFree = !CheckNeighbors(map, map[figure.Location + stepCount].State);
+            
             if (map[targetLocation].State == null)
             {
                 SimpleStep(stepCount, map, figure);
                 return true;
             }
 
-            map[figure.Location + stepCount].State.IsFree = !CheckNeighbors(map, map[figure.Location + stepCount].State);
-            
             if (map[targetLocation].State != null
                 && map[targetLocation].State.IsFree && map[targetLocation].State.Type != figure.Type)
             {
@@ -150,6 +147,7 @@ namespace Game.GameLogic
 
         private static void MoveToHouseOfRevival(Cell[] map, Figure figure)
         {
+            map[figure.Location].State = null;
             for (var i = HouseOfRevival.Location; i >= 1; i--)
             {
                 if (map[i].State != null) continue;
@@ -171,13 +169,15 @@ namespace Game.GameLogic
             var temp = map[figure.Location + stepCount].State;
             map[figure.Location + stepCount].State = map[figure.Location].State;
             map[figure.Location].State = temp;
-            figure.Location += stepCount;  
+            map[figure.Location].State.Location -= stepCount;
+            figure.Location += stepCount;
         }
 
         private static bool StepOut(int stepCount, Cell[] map, Figure figure)
         {
             if (stepCount != map.Length - figure.Location) return false;
             map[figure.Location].State = null;
+            CurrentPlayer.OwnFigures.Remove(figure);
             return true;
         }
 
@@ -185,7 +185,8 @@ namespace Game.GameLogic
         {
             map[26].State = map[figure.Location].State;
             map[figure.Location].State = null;
-            figure.Location = 26; 
+            figure.Location = 26;
+            Sticks.ExtraMove = true;
         }
 
         private static bool CheckNeighbors(Cell[] map, Figure figure)
@@ -197,6 +198,25 @@ namespace Game.GameLogic
             }
 
             return map[figure.Location - 1].State != null && map[figure.Location - 1].State.Type == figure.Type;
+        }
+
+        public List<Figure> CheckAbleToMove(int stepCount)
+        {
+            var result = new List<Figure>();
+            foreach (var figure in CurrentPlayer.OwnFigures)
+            {
+                if (figure.Location + stepCount < Map.Length)
+                {
+                    var target = Map[figure.Location + stepCount];
+                    if (target.State == null || target.State.IsFree && figure.Type != target.State.Type)
+                        result.Add(figure);
+                }
+
+                else if (figure.Location + stepCount == Map.Length)
+                    result.Add(figure);
+            }
+
+            return result;
         }
     }
 }

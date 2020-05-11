@@ -5,9 +5,8 @@ namespace Game.Views
 {
     public partial class MenuForm : Form
     {
-        public MenuForm(GameLogic.Game game)
+        public MenuForm()
         {
-            var a = new GameForm(game);
             MinimumSize = new Size(1200, 800);
             MaximumSize = MinimumSize;
             BackgroundImage = new Bitmap(@"images\start.jpg");
@@ -15,7 +14,7 @@ namespace Game.Views
             {
                 Text = @"Начать",
                 Font = new Font("Arial", 13),
-                Size = new Size(100, 55),
+                Size = new Size(120, 55),
                 Location = new Point(ClientSize.Width / 2 - 150, ClientSize.Height / 2)
             };
         
@@ -23,7 +22,7 @@ namespace Game.Views
             
             startButton.Click += (sender, args) =>
             {
-                a.Show();
+                new GameForm(new GameLogic.Game(), this).Show();
                 Hide();
             };
             
@@ -31,7 +30,7 @@ namespace Game.Views
             {
                 Text = @"Настройки",
                 Font = new Font("Arial", 13),
-                Size = new Size(100, 55),
+                Size = new Size(120, 55),
                 Location = new Point(startButton.Right + 15, ClientSize.Height / 2)
             };
             
@@ -40,7 +39,7 @@ namespace Game.Views
             {
                 Text = @"История",
                 Font = new Font("Arial", 13),
-                Size = new Size(100, 55),
+                Size = new Size(120, 55),
                 Location = new Point(settingsButton.Right + 15, ClientSize.Height / 2)
             };
             
